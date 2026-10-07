@@ -28,6 +28,9 @@ Open `colab_runner.ipynb` in Colab: File > Open notebook > GitHub tab, search
 `fbett5/sic-defect-detection-ml` (tick "Include private repos" if the repo is private).
 Set Runtime > Change runtime type > **T4 GPU** and run the cells in order.
 
+Training cells show a live dashboard while they run (progress, loss and score curves,
+confusion matrix, sample predictions, GPU use), via `sicdefect.live.watch()`.
+
 Data, MLflow history and checkpoints are saved to `MyDrive/WafferMap-811/` in
 Google Drive. Put `LSWMD.pkl` there, or add `KAGGLE_USERNAME` / `KAGGLE_KEY` as
 Colab secrets and the notebook downloads it. If the repo is private, also add a

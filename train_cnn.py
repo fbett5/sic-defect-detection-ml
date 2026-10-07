@@ -26,8 +26,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision
+from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 
+from sicdefect.live import write_live
 from sicdefect.losses import FocalLoss
 from sicdefect.metrics import classification_metrics, plot_confusion, report
 from sicdefect.utils import get_device, seed_everything, setup_mlflow
@@ -47,14 +49,17 @@ def build_model(name: str, num_classes: int, pretrained: bool) -> nn.Module:
 
 
 @torch.no_grad()
-def predict(model, loader, device):
+def predict(model, loader, device, with_loss=False):
     model.eval()
-    ys, ps = [], []
+    ys, ps, total = [], [], 0.0
     for x, y in loader:
         logits = model(x.to(device, non_blocking=True))
+        if with_loss:
+            total += nn.functional.cross_entropy(logits, y.to(device), reduction="sum").item()
         ps.append(logits.argmax(1).cpu().numpy())
         ys.append(y.numpy())
-    return np.concatenate(ys), np.concatenate(ps)
+    ys, ps = np.concatenate(ys), np.concatenate(ps)
+    return (ys, ps, total / max(len(ys), 1)) if with_loss else (ys, ps)
 
 
 def subsample(idx: np.ndarray, labels: np.ndarray, limit: int, rng) -> np.ndarray:
@@ -129,6 +134,14 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     ckpt = out_dir / "best.pt"
 
+    # Live dashboard state (read by sicdefect.live.watch in the notebook)
+    live_path = out_dir / "live.json"
+    sample_idx = rng.choice(len(va), size=min(12, len(va)), replace=False) if len(va) else np.array([], int)
+    live = {"run": run_name, "classes": CLASSES,
+            "history": {k: [] for k in ("epoch", "train_loss", "val_loss", "val_macro_f1",
+                                        "val_balanced_acc", "val_defect_recall")}}
+    write_live(live_path, live)
+
     mlflow = setup_mlflow(args.experiment)
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params({**vars(args), "n_train": len(tr), "n_val": len(va), "n_test": len(te),
@@ -137,7 +150,8 @@ def main():
         for epoch in range(1, args.epochs + 1):
             model.train()
             t0, total, n = time.time(), 0.0, 0
-            for x, yb in train_loader:
+            n_batches, last_live = len(train_loader), 0.0
+            for b, (x, yb) in enumerate(train_loader, 1):
                 x, yb = x.to(device, non_blocking=True), yb.to(device, non_blocking=True)
                 opt.zero_grad(set_to_none=True)
                 loss = criterion(model(x), yb)
@@ -145,11 +159,30 @@ def main():
                 opt.step()
                 total += loss.item() * len(yb)
                 n += len(yb)
+                if time.time() - last_live > 3 or b == n_batches:
+                    live["progress"] = {"epoch": epoch, "epochs": args.epochs, "batch": b,
+                                        "batches": n_batches, "loss": total / n, "phase": "training"}
+                    write_live(live_path, live)
+                    last_live = time.time()
             sched.step()
 
-            yv, pv = predict(model, val_loader, device)
+            live["progress"]["phase"] = "validating"
+            write_live(live_path, live)
+            yv, pv, val_loss = predict(model, val_loader, device, with_loss=True)
             m = classification_metrics(yv, pv)
-            mlflow.log_metrics({"train_loss": total / max(n, 1), "lr": sched.get_last_lr()[0],
+            hist = live["history"]
+            for k, v in (("epoch", epoch), ("train_loss", total / max(n, 1)), ("val_loss", val_loss),
+                         ("val_macro_f1", m["macro_f1"]), ("val_balanced_acc", m["balanced_acc"]),
+                         ("val_defect_recall", m["defect_recall"])):
+                hist[k].append(float(v))
+            live["val_confusion"] = confusion_matrix(yv, pv, labels=range(len(CLASSES))).tolist()
+            live["val_epoch"] = epoch
+            live["samples"] = {"maps": maps[va[sample_idx]].tolist(),
+                               "true": [CLASSES[i] for i in yv[sample_idx]],
+                               "pred": [CLASSES[i] for i in pv[sample_idx]]}
+            write_live(live_path, live)
+            mlflow.log_metrics({"train_loss": total / max(n, 1), "val_loss": val_loss,
+                                "lr": sched.get_last_lr()[0],
                                 **{f"val_{k}": v for k, v in m.items()}}, step=epoch)
             print(f"epoch {epoch:3d}  loss {total / max(n, 1):.4f}  val macro-F1 {m['macro_f1']:.4f}  "
                   f"bal-acc {m['balanced_acc']:.4f}  ({time.time() - t0:.0f}s)")
@@ -165,6 +198,8 @@ def main():
                     break
 
         # Final test evaluation with the best checkpoint
+        live["progress"]["phase"] = "testing best checkpoint"
+        write_live(live_path, live)
         model.load_state_dict(torch.load(ckpt, map_location=device)["model"])
         yt, pt = predict(model, test_loader, device)
         tm = classification_metrics(yt, pt)
