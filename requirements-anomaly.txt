@@ -1,0 +1,4 @@
+# anomalib pins its own torch / lightning versions.
+# Safest: install this in its own virtual environment (see README).
+anomalib>=2.0
+mlflow>=2.12

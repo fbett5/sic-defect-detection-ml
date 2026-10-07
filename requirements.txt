@@ -1,0 +1,14 @@
+# Core (Phase 1: WM-811K classification)
+numpy
+pandas
+opencv-python
+scikit-learn
+matplotlib
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.3
+mlflow>=2.12
+pytest
+
+# Phase 2 (MVTec AD anomaly detection) — install separately, see README:
+#   pip install -r requirements-anomaly.txt
