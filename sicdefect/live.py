@@ -61,6 +61,9 @@ def _guess_live_source(argv: list[str]) -> tuple[str, Path]:
     out = Path(_arg(argv, "--out", "outputs"))
     if not out.is_absolute():
         out = ROOT / out
+    if script == "train_sem.py":
+        run = _arg(argv, "--run-name") or f"sem-{_arg(argv, '--model', 'resnet18')}"
+        return "cnn", out / run / "live.json"
     if script == "train_yolo.py":
         name = _arg(argv, "--run-name") or Path(_arg(argv, "--model", "yolov8n-cls.pt")).stem
         return "yolo", out / "yolo" / name / "results.csv"
@@ -202,7 +205,8 @@ def _draw(kind: str, st: dict | None, log: deque, elapsed: float, title: str, do
         sub = gs[1, 1].subgridspec(rows, cols, hspace=0.55, wspace=0.1)
         for j in range(len(maps)):
             a = fig.add_subplot(sub[j // cols, j % cols])
-            a.imshow(maps[j], cmap="viridis", vmin=0, vmax=2, interpolation="nearest")
+            a.imshow(maps[j], cmap=samples.get("cmap", "viridis"), vmin=0, vmax=samples.get("vmax", 2),
+                     interpolation="nearest")
             ok = samples["true"][j] == samples["pred"][j]
             a.set_title(f"{samples['true'][j]}\n→ {samples['pred'][j]}", fontsize=8,
                         color="green" if ok else "red")

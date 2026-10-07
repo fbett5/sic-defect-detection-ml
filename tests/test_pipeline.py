@@ -66,3 +66,25 @@ def test_loads_synthetic_pickle(tmp_path):
     df = load_wm811k(pkl)
     assert 0 < len(df) < 200  # unlabeled rows dropped
     assert set(df["label"]) <= set(CLASSES)
+
+
+def test_sem_loading_crop_and_split(tmp_path):
+    import cv2
+
+    from sicdefect.sem import SEMDataset, load_gray, scan_folder, stratified_split
+
+    for c in ("dirt", "scratch"):
+        (tmp_path / c).mkdir()
+        for i in range(6):
+            img = np.full((100, 80), 100, np.uint16) * 257  # 16-bit, like many SEM TIFFs
+            img[90:] = 0  # info bar
+            cv2.imwrite(str(tmp_path / c / f"{i}.tif"), img)
+    files, labels, classes = scan_folder(tmp_path)
+    assert classes == ["dirt", "scratch"] and len(files) == 12
+    g = load_gray(files[0], crop_bottom=0.1)
+    assert g.dtype == np.uint8 and g.shape == (90, 80)
+    split = stratified_split(labels, 0.2, 0.2, seed=0)
+    for c in (0, 1):
+        assert set(split[labels == c]) == {"train", "val", "test"}
+    x, y = SEMDataset(files, labels, img_size=64, crop_bottom=0.1, train=True)[0]
+    assert x.shape == (3, 64, 64) and x.dtype == torch.float32

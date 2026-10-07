@@ -176,6 +176,37 @@ Open http://127.0.0.1:5000. Sort runs by `test_macro_f1` (WM-811K) or
 of wafers are `none`, so predicting `none` every time scores ~85% accuracy.
 Choose models on **val** metrics; look at **test** only for the final comparison.
 
+## 6b. Your own SEM images (transfer learning)
+
+`train_sem.py` fine-tunes an ImageNet CNN on labelled SEM images of artifacts
+(dirt, scratch, nanowire, ...). Put them in one folder per class:
+
+```
+SEM-artifacts/
+    clean/  dirt/  scratch/  nanowire/   (.tif 8/16-bit, .png, .jpg, .bmp)
+```
+
+```bash
+python train_sem.py --data SEM-artifacts --crop-bottom 0.07      # crop = SEM info bar height
+python predict_sem.py --model outputs/sem-resnet18/model.pt --input new_images/ --heatmaps
+```
+
+- `model.pt` is the file to keep. It holds the weights, the class names and the
+  preprocessing settings (image size, info-bar crop), so `predict_sem.py` needs nothing else.
+- `model_ts.pt` is a TorchScript copy for use outside this repo:
+  `torch.jit.load("model_ts.pt")`. Input: 1x3x224x224, grayscale repeated to 3 channels,
+  ImageNet mean/std normalised (see `sicdefect/sem.py: preprocess`).
+- `predict_sem.py` writes `predictions.csv` (class, confidence, top-3, needs_review),
+  a gallery, and with `--heatmaps` Grad-CAM overlays showing where the model looked.
+- Images under `--threshold` confidence (default 0.7) are flagged for human review.
+  A new artifact type the model never saw will usually be flagged, but not always.
+- Start from ImageNet weights, not the WM-811K model: 64 px pass/fail wafer grids carry
+  nothing useful about SEM texture. Try `--model efficientnet_b0` or `convnext_tiny` once
+  resnet18 works. Aim for 50+ images per class.
+- Images of the same particle at several magnifications are near-duplicates: if they land
+  in both train and test, the test score is too optimistic. Check `split.csv`.
+- No data yet? `python tools/make_synthetic_sem.py` makes a fake set to test the pipeline.
+
 ## 7. Layout
 
 ```
