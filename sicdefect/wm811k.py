@@ -87,12 +87,9 @@ def load_wm811k(pkl_path: str | Path) -> pd.DataFrame:
 
     Returns a DataFrame with columns: waferMap, lot, label (str), y (int).
     """
-    path = Path(pkl_path)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found. Download 'WM-811K wafer map' from Kaggle "
-            "(file LSWMD.pkl) and put it in data/raw/."
-        )
+    from .paths import resolve_pkl
+
+    path = resolve_pkl(pkl_path)
     df = _read_lswmd(path)
     if "lotName" not in df.columns or "waferMap" not in df.columns:
         raise ValueError(f"Unexpected columns in {path}: {list(df.columns)}")

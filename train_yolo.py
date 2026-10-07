@@ -46,7 +46,7 @@ def main():
 
     data = Path(args.data).resolve()
     if not (data / "train").exists():
-        raise SystemExit(f"{data}/train not found — run prepare_wm811k.py first.")
+        raise SystemExit(f"{data}/train not found. Run prepare_wm811k.py first.")
 
     dev = get_device(args.device)
     device = 0 if dev.type == "cuda" else dev.type

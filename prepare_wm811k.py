@@ -9,7 +9,8 @@ Writes:
 Both training scripts read the SAME split, so CNN vs YOLO comparisons are fair.
 
 Usage:
-  python prepare_wm811k.py --pkl data/raw/LSWMD.pkl --size 64
+  python prepare_wm811k.py                 # uses the path in sicdefect/paths.py
+  python prepare_wm811k.py --pkl "path/to/LSWMD.pkl"   # or a folder containing it
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from sicdefect.paths import resolve_pkl, wm811k_default
 from sicdefect.wm811k import CLASSES, load_wm811k, lot_grouped_split, resize_map, to_png
 
 
@@ -47,7 +49,8 @@ def save_sample_grid(maps, labels, path, per_class=6, seed=0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pkl", default="data/raw/LSWMD.pkl")
+    ap.add_argument("--pkl", default=wm811k_default(),
+                    help="LSWMD.pkl or the folder containing it (default: sicdefect/paths.py)")
     ap.add_argument("--out", default="data/processed")
     ap.add_argument("--size", type=int, default=64, help="resize wafer maps to size x size")
     ap.add_argument("--val-frac", type=float, default=0.15)
@@ -59,7 +62,7 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {args.pkl} ...")
+    print(f"Loading {resolve_pkl(args.pkl)} ...")
     df = load_wm811k(args.pkl)
     print(f"Labeled wafers: {len(df):,} across {df['lot'].nunique():,} lots")
 
@@ -69,7 +72,7 @@ def main():
     lots = df["lot"].to_numpy()
 
     split = lot_grouped_split(lots, args.val_frac, args.test_frac, args.seed)
-    print("No lot appears in more than one split ✔")
+    print("OK: no lot appears in more than one split")
 
     npz = out / f"wm811k_{args.size}.npz"
     np.savez_compressed(npz, maps=maps, y=labels, lot=lots, split=split, classes=np.array(CLASSES))

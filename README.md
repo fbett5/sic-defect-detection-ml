@@ -22,6 +22,39 @@ All runs log to MLflow so you can compare them in one dashboard.
 - **Disk:** ~3 GB for WM-811K, ~5 GB for MVTec AD.
 - A **Kaggle account** (free) to download WM-811K.
 
+## Windows quick start (Festus's machine)
+
+The data path is already set in `sicdefect/paths.py`:
+`C:\Users\festu\Downloads\Sofia University\ML Projects\WafferMap-811`
+(the scripts look inside that folder for `LSWMD.pkl`, including subfolders,
+so extract the Kaggle zip there first).
+
+In **PowerShell**:
+
+```powershell
+cd "C:\Users\festu\Downloads\Sofia University\ML Projects"
+git clone https://github.com/fbett5/sic-defect-detection-ml.git
+cd sic-defect-detection-ml
+
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+# If activation is blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+nvidia-smi        # prints a GPU table? -> NVIDIA GPU present
+# GPU:    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# No GPU: pip install torch torchvision
+pip install -r requirements.txt
+
+pytest -q tests                       # sanity check
+python prepare_wm811k.py              # reads your WafferMap-811 folder
+python train_cnn.py --limit 5000 --epochs 2   # quick real-data check
+python train_cnn.py                   # full run
+mlflow ui --backend-store-uri sqlite:///mlflow.db   # open http://127.0.0.1:5000
+```
+
+Data moved? Edit `WM811K_DEFAULT` in `sicdefect/paths.py`, set
+`$env:WM811K_PATH = "D:\new\place"`, or pass `--pkl "D:\new\place"`.
+
 ## 2. Setup (one time)
 
 ```bash
@@ -67,13 +100,14 @@ pip install kaggle        # then put your API token in ~/.kaggle/kaggle.json
 kaggle datasets download -d qingyi/wm811k-wafer-map -p data/raw --unzip
 ```
 
-You should end up with `data/raw/LSWMD.pkl`.
+You should end up with `data/raw/LSWMD.pkl` (or anywhere else; see `sicdefect/paths.py`).
 
 ## 5. Run order
 
 ### Step 1 — prepare data (once)
 ```bash
-python prepare_wm811k.py --pkl data/raw/LSWMD.pkl --size 64
+python prepare_wm811k.py                                   # path from sicdefect/paths.py
+python prepare_wm811k.py --pkl data/raw/LSWMD.pkl --size 64   # or give it explicitly
 ```
 Keeps the ~173k labeled wafers, resizes to 64×64 (nearest-neighbour, so die
 values stay 0/1/2), and splits **by lot** into train/val/test. It refuses to
