@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from sicdefect.paths import resolve_pkl, wm811k_default
-from sicdefect.wm811k import CLASSES, load_wm811k, lot_grouped_split, resize_map, to_png
+from sicdefect.wm811k import CLASSES, load_processed, load_wm811k, lot_grouped_split, resize_map, to_png
 
 
 def save_sample_grid(maps, labels, path, per_class=6, seed=0):
@@ -47,6 +47,17 @@ def save_sample_grid(maps, labels, path, per_class=6, seed=0):
     plt.close(fig)
 
 
+def write_yolo_folders(maps, labels, split, ydir):
+    ydir = Path(ydir)
+    print(f"Writing PNG folders for YOLO to {ydir} ...")
+    for s in ("train", "val", "test"):
+        for c in CLASSES:
+            (ydir / s / c).mkdir(parents=True, exist_ok=True)
+    for i, (m, y, s) in enumerate(zip(maps, labels, split)):
+        cv2.imwrite(str(ydir / s / CLASSES[y] / f"{i:06d}.png"), to_png(m))
+    print("Done.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkl", default=wm811k_default(),
@@ -57,10 +68,17 @@ def main():
     ap.add_argument("--test-frac", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--no-yolo", action="store_true", help="skip writing PNG folders for YOLO")
+    ap.add_argument("--yolo-from-npz", metavar="NPZ",
+                    help="only rebuild YOLO PNG folders from an existing .npz (no .pkl needed)")
     args = ap.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+
+    if args.yolo_from_npz:
+        d = load_processed(args.yolo_from_npz)
+        write_yolo_folders(d["maps"], d["y"], d["split"], out / f"yolo_{d['maps'].shape[1]}")
+        return
 
     print(f"Loading {resolve_pkl(args.pkl)} ...")
     df = load_wm811k(args.pkl)
@@ -89,15 +107,7 @@ def main():
     save_sample_grid(maps, labels, out / "samples.png")
 
     if not args.no_yolo:
-        ydir = out / f"yolo_{args.size}"
-        print(f"Writing PNG folders for YOLO to {ydir} ...")
-        for s in ("train", "val", "test"):
-            for c in CLASSES:
-                (ydir / s / c).mkdir(parents=True, exist_ok=True)
-        for i, (m, y, s) in enumerate(zip(maps, labels, split)):
-            cv2.imwrite(str(ydir / s / CLASSES[y] / f"{i:06d}.png"), to_png(m))
-        print("Done.")
-
+        write_yolo_folders(maps, labels, split, out / f"yolo_{args.size}")
 
 if __name__ == "__main__":
     main()

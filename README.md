@@ -22,6 +22,17 @@ All runs log to MLflow so you can compare them in one dashboard.
 - **Disk:** ~3 GB for WM-811K, ~5 GB for MVTec AD.
 - A **Kaggle account** (free) to download WM-811K.
 
+## Run on Google Colab (free GPU)
+
+Open `colab_runner.ipynb` in Colab: File > Open notebook > GitHub tab, search
+`fbett5/sic-defect-detection-ml` (tick "Include private repos" if the repo is private).
+Set Runtime > Change runtime type > **T4 GPU** and run the cells in order.
+
+Data, MLflow history and checkpoints are saved to `MyDrive/WafferMap-811/` in
+Google Drive. Put `LSWMD.pkl` there, or add `KAGGLE_USERNAME` / `KAGGLE_KEY` as
+Colab secrets and the notebook downloads it. If the repo is private, also add a
+`GITHUB_TOKEN` secret. The first cell of the notebook explains each one.
+
 ## Windows quick start (Festus's machine)
 
 The data path is already set in `sicdefect/paths.py`:
