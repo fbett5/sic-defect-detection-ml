@@ -16,3 +16,10 @@ datasets/
 *.pt
 *.pkl
 *.npz
+
+# model bundles and exports are large binaries — regenerate them
+*.joblib
+*.onnx
+*.ts
+exported/
+*.egg-info/

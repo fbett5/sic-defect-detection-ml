@@ -1,0 +1,2 @@
+run,macro_f1,balanced_acc,accuracy,defect_recall,defect_precision,f1_none,f1_Center,f1_Donut,f1_Edge-Loc,f1_Edge-Ring,f1_Loc,f1_Random,f1_Scratch,f1_Near-full,epochs_trained,best_val_macro_f1,has_checkpoint
+resnet18-synthetic,0.9919944789510006,0.9907407407407407,0.9953271028037384,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.9714285714285714,1.0,0.9565217391304348,1.0,12,1.0,True

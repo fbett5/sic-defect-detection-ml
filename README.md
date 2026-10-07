@@ -99,6 +99,11 @@ python tools/make_synthetic_wm811k.py
 python prepare_wm811k.py --pkl data/raw/LSWMD_synthetic.pkl --out data/synthetic
 python train_cnn.py --data data/synthetic/wm811k_64.npz --epochs 3 --experiment smoke
 python train_yolo.py --data data/synthetic/yolo_64 --epochs 2 --experiment smoke
+
+# export the result and score new data with it (Step 6)
+python -m sicdefect.export --ckpt outputs/resnet18-weighted_sampler/best.pt
+python -m sicdefect.infer --bundle exported/resnet18-weighted_sampler \
+                          --input data/synthetic/wm811k_64.npz --split test --n 5
 ```
 
 The synthetic patterns are easy, so near-perfect scores here only mean the
@@ -164,6 +169,43 @@ python predict.py --ckpt outputs/resnet18-weighted_sampler/best.pt \
 Prints the predicted pattern plus candidate process causes from
 `sicdefect/rootcause.py`. Edit that table as you learn what applies to your process.
 
+### Step 6 — export a portable model, and run it on new data
+
+`outputs/<run>/best.pt` is a training checkpoint, not something you can hand to
+anyone: re-loading it needs this repo, a matching torchvision, and the
+preprocessing rules that live in the training code. Export turns it into a
+self-contained bundle instead.
+
+```bash
+python -m sicdefect.export --ckpt outputs/resnet18-weighted_sampler/best.pt --zip
+```
+
+That writes `exported/resnet18-weighted_sampler/`:
+
+| file | what it is |
+|---|---|
+| `model.onnx` | the network as a portable graph, weights inlined in the one file. Scoring it needs only `numpy` + `onnxruntime` — no PyTorch, no torchvision, none of this repo, not even Python. |
+| `model.ts` | TorchScript copy, if you already run PyTorch |
+| `bundle.json` | class list, input size, the **exact** preprocessing contract, plus the checkpoint's SHA-256, its test metrics and library versions |
+| `model_card.md` | what it scored and where not to trust it |
+
+Export verifies itself: both graphs are run against the source PyTorch model on a
+fixed probe batch and the export **fails** if they disagree by more than 1e-4. The
+measured difference is recorded in `bundle.json` (TorchScript matches exactly; ONNX
+to ~2e-6).
+
+Then point it at new wafer maps — a `.npy`, a stack, an `.npz`, PNGs, or a whole
+directory, at any map size:
+
+```bash
+python -m sicdefect.infer --bundle exported/resnet18-weighted_sampler \
+                          --input new_wafers/ --out scored.csv --root-causes
+```
+
+You get per-wafer predicted pattern, confidence, `defect_probability`
+(= 1 − p(none)) and the full per-class distribution. `--backend onnx|torch` picks
+the runtime; `--split test` filters a processed `.npz`.
+
 ## 6. View results
 
 ```bash
@@ -181,10 +223,13 @@ Choose models on **val** metrics; look at **test** only for the final comparison
 ```
 sicdefect/            library code
   wm811k.py           loading, lot-grouped split, dataset, dihedral augmentation
+  models.py           backbone construction (shared by training, export, inference)
   metrics.py          macro-F1, balanced acc, defect recall, confusion plot
   losses.py           focal loss
   rootcause.py        pattern -> likely process causes
   utils.py            device selection, seeding, MLflow setup
+  export.py           Step 6 — checkpoint -> portable ONNX/TorchScript bundle
+  infer.py            Step 6 — apply a bundle to new .npy/.npz/PNG/directory data
 prepare_wm811k.py     Step 1
 train_cnn.py          Step 2
 train_yolo.py         Step 3
@@ -192,7 +237,27 @@ run_anomaly.py        Step 4
 predict.py            Step 5
 tools/make_synthetic_wm811k.py   fake data for smoke tests
 tests/                pytest unit tests
+paper/                the write-up (main.tex + paper.md) and its results harness
+extras/               optional side track, not part of the pipeline — see its README
 ```
+
+## The paper
+
+`paper/` holds the write-up of this project — the lot-grouped evaluation protocol,
+the imbalance handling, the metric argument, and the deployment artifact — as
+`main.tex` (for submission) and `paper.md` (readable).
+
+Every number in it is generated from run outputs, never typed by hand:
+
+```bash
+python paper/make_results.py --tag wm811k
+```
+
+That reads each `outputs/<run>/test_metrics.json` and rewrites the tables and
+figures. **The results currently committed come from the synthetic smoke-test run**,
+so they only demonstrate that the pipeline executes — the paper says so in the
+abstract, the results section and the threats-to-validity section. Replace them with
+real WM-811K numbers before circulating it. See `paper/README.md`.
 
 ## 8. Troubleshooting
 

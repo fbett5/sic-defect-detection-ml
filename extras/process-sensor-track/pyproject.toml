@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sicdd"
+version = "0.1.0"
+description = "Leakage-safe defect detection on in-line semiconductor process data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+nn = ["torch>=2.0"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+sicdd-train = "sicdd.train:main"
+sicdd-predict = "sicdd.predict:main"
+sicdd-figures = "sicdd.figures:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning"]

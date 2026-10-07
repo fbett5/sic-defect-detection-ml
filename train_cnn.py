@@ -25,27 +25,15 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-import torchvision
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 
 from sicdefect.live import write_live
 from sicdefect.losses import FocalLoss
 from sicdefect.metrics import classification_metrics, plot_confusion, report
+from sicdefect.models import MODELS, build_model
 from sicdefect.utils import get_device, seed_everything, setup_mlflow
 from sicdefect.wm811k import CLASSES, WaferDataset, class_weights, load_processed, make_weighted_sampler
-
-MODELS = ["resnet18", "resnet50", "efficientnet_b0", "efficientnet_b3"]
-
-
-def build_model(name: str, num_classes: int, pretrained: bool) -> nn.Module:
-    weights = "DEFAULT" if pretrained else None
-    m = getattr(torchvision.models, name)(weights=weights)
-    if name.startswith("resnet"):
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
-    elif name.startswith("efficientnet"):
-        m.classifier[-1] = nn.Linear(m.classifier[-1].in_features, num_classes)
-    return m
 
 
 @torch.no_grad()
