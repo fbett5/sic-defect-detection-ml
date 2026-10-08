@@ -246,7 +246,7 @@ sicdefect/            library code
   sem.py              SEM artifact classification (train_sem.py / predict_sem.py)
   live.py             live training dashboard for notebooks
 configs/              YAML configs for every detection/classification run
-docs/                 DETECTION.md, TECHNICAL_ANALYSIS.md, MODEL_CARD.md, datasets/
+docs/                 DETECTION.md, TECHNICAL_ANALYSIS.md, MODEL_CARD.md, dataset-cards/
 prepare_wm811k.py     Step 1
 train_cnn.py          Step 2
 train_yolo.py         Step 3

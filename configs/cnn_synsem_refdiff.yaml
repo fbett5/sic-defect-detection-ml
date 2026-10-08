@@ -1,0 +1,15 @@
+# CNN second stage: classify a candidate region as one of the defect classes or background.
+run_name: cnn-resnet18-synsem-refdiff
+dataset: data/det/synthetic_sem
+view: refdiff                       # must match the detector's view
+model: resnet18                # resnet18 | resnet50 | efficientnet_b0 | efficientnet_b3 | convnext_tiny
+bg_per_image: 3                # random background crops per training image
+hard_conf: 0.05                # detector confidence for mining hard negatives (--det-weights)
+train:
+  epochs: 8
+  batch: 128
+  lr: 0.003
+  weight_decay: 0.0001
+  label_smoothing: 0.05
+  pretrained: true             # ImageNet start; falls back to scratch when offline
+  seed: 42

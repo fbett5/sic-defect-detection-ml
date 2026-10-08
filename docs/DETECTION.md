@@ -18,7 +18,7 @@ semiconductor / inspection image (+ known-good reference)
 
 Results, failure analysis and limitations: [TECHNICAL_ANALYSIS.md](TECHNICAL_ANALYSIS.md).
 Trained-model details: [MODEL_CARD.md](MODEL_CARD.md). Dataset documentation:
-[data/deeppcb.md](data/deeppcb.md).
+[dataset-cards/deeppcb.md](dataset-cards/deeppcb.md).
 
 Everything runs with `bash reproduce_det.sh`, or step by step below, or in Colab
 (`colab_runner.ipynb`, section 11).

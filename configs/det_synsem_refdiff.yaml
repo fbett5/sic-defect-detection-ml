@@ -1,0 +1,31 @@
+# YOLO detection on synthetic SEM-like die images (patterned metal + die-to-die reference).
+# Data: tools/make_synthetic_sem_det.py, then prepare_detection.py --dataset yolo --views gray refdiff
+# Every key under `train:` is passed straight to ultralytics YOLO.train().
+run_name: yolov8n-synsem-refdiff
+dataset: data/det/synthetic_sem        # curated dataset (prepare_detection.py)
+view: refdiff                      # preprocessing mode: gray | refdiff | clahe (sicdefect/det/preprocess.py)
+model: yolov8n.pt                  # COCO-pretrained start; yolov8s.pt / yolo11n.pt also work
+train:
+  epochs: 40
+  imgsz: 640                       # native resolution: defects are ~35 px, do not downscale
+  batch: 16
+  patience: 15
+  optimizer: AdamW
+  lr0: 0.002
+  cos_lr: true
+  warmup_epochs: 2
+  seed: 42
+  # Augmentation. Inspection images are grayscale and their channels carry meaning
+  # (tested / reference / difference), so no colour jitter. Flips keep defects valid.
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.0
+  fliplr: 0.5
+  flipud: 0.5
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.25
+  mosaic: 1.0
+  close_mosaic: 10
+  mixup: 0.0
+  erasing: 0.0

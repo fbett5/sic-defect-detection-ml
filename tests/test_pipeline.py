@@ -147,3 +147,14 @@ def test_crop_with_context_clips():
 
     img = np.zeros((100, 100, 3), np.uint8)
     assert cut(img, (90, 90, 100, 100)).shape == (64, 64, 3)
+
+
+def test_yolo_import_keeps_groups_together():
+    from sicdefect.det.data import _holdout_by_group
+
+    ids = [f"die{g}_{k}" for g in range(40) for k in range(4)]
+    split = _holdout_by_group(ids, [i.split("_")[0] for i in ids], 0.15, 0.15, seed=0)
+    for g in range(40):
+        assert len({split[f"die{g}_{k}"] for k in range(4)}) == 1
+    n = {s: sum(v == s for v in split.values()) for s in ("train", "val", "test")}
+    assert 20 <= n["test"] <= 28 and 20 <= n["val"] <= 28

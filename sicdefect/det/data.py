@@ -86,6 +86,24 @@ def _split_by_group(ids: list[str], groups: list[str], val: float, test: float, 
     return split
 
 
+def _holdout_by_group(ids: list[str], groups: list[str], val: float, test: float, seed: int) -> dict[str, str]:
+    """Whole groups go to one split (no sample appears in two splits): for near-duplicate
+    shots of the same die / particle / lot."""
+    rng = np.random.default_rng(seed)
+    by_g = defaultdict(list)
+    for i, g in zip(ids, groups):
+        by_g[g].append(i)
+    order = rng.permutation(sorted(by_g)).tolist()
+    n, split, done = len(ids), {}, {"test": 0, "val": 0}
+    for g in order:
+        target = "test" if done["test"] < test * n else "val" if done["val"] < val * n else "train"
+        for i in by_g[g]:
+            split[i] = target
+        if target != "train":
+            done[target] += len(by_g[g])
+    return split
+
+
 def _finish(out: Path, rows: list[dict], classes: list[str], source: str) -> Path:
     with open(out / "manifest.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -220,6 +238,8 @@ def convert_yolo(src: str | Path, out: str | Path, val: float = 0.15, test: floa
     """Any YOLO export: <src>/images/*.png + <src>/labels/*.txt (+ classes.txt or data.yaml).
 
     Use this for your own labelled images (e.g. SEM artifacts boxed in CVAT or Label Studio).
+    Optional ``<src>/references/`` with the same file names (a good-die image of the same
+    location) enables the ``refdiff`` view.
     Existing train/val/test sub-folders are respected; otherwise a random split is made,
     grouped by the filename prefix before the first '_' (e.g. sample or lot ID) so
     near-duplicate shots of the same sample stay in the same split.
@@ -238,13 +258,26 @@ def convert_yolo(src: str | Path, out: str | Path, val: float = 0.15, test: floa
     imgs = sorted(f for f in (src / "images").rglob("*") if f.suffix.lower() in IMG_EXTS)
     preset = {f: next((s for s in SPLITS if s in f.relative_to(src / "images").parts), None) for f in imgs}
     ids = [f.stem for f in imgs]
-    auto = _split_by_group(ids, [i.split("_")[0] for i in ids], val, test, seed)
+    auto = _holdout_by_group(ids, [i.split("_")[0] for i in ids], val, test, seed)
     _reset(out)
+    has_refs = (src / "references").is_dir()
+    if has_refs:
+        for sp in SPLITS:
+            (out / "references" / sp).mkdir(parents=True, exist_ok=True)
     rows = []
     for f, iid in zip(imgs, ids):
         s = preset[f] or auto[iid]
         img = read_gray(f)
         h, w = img.shape
+        ref = None
+        if has_refs:
+            rel = f.relative_to(src / "images")
+            ref = next((p for p in [src / "references" / rel] +
+                        [src / "references" / rel.parent / f"{f.stem}{e}" for e in IMG_EXTS] if p.exists()), None)
+            if ref is not None:
+                r = read_gray(ref)
+                cv2.imwrite(str(out / "references" / s / f"{iid}.png"),
+                            r if r.shape == img.shape else cv2.resize(r, (w, h)))
         lab = next((p for p in [src / "labels" / f.relative_to(src / "images").with_suffix(".txt"),
                                 src / "labels" / f"{f.stem}.txt"] if p.exists()), None)
         cv2.imwrite(str(out / "images" / s / f"{iid}.png"), img)
@@ -254,7 +287,7 @@ def convert_yolo(src: str | Path, out: str | Path, val: float = 0.15, test: floa
             (out / "labels" / s / f"{iid}.txt").write_text("")
         n = len(read_labels(out / "labels" / s / f"{iid}.txt", w, h))
         rows.append({"id": iid, "split": s, "group": iid.split("_")[0], "width": w, "height": h,
-                     "n_boxes": n, "has_reference": 0, "source": str(f.relative_to(src))})
+                     "n_boxes": n, "has_reference": int(ref is not None), "source": str(f.relative_to(src))})
     return _finish(out, rows, classes, f"YOLO export from {src.name}")
 
 
