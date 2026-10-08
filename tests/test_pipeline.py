@@ -88,3 +88,73 @@ def test_sem_loading_crop_and_split(tmp_path):
         assert set(split[labels == c]) == {"train", "val", "test"}
     x, y = SEMDataset(files, labels, img_size=64, crop_bottom=0.1, train=True)[0]
     assert x.shape == (3, 64, 64) and x.dtype == torch.float32
+
+
+# ------------------------------------------------------------------ detection track
+def test_iou_and_matching():
+    from sicdefect.det.boxes import greedy_match, iou_matrix
+
+    m = iou_matrix([(0, 0, 10, 10), (20, 20, 30, 30)], [(0, 0, 10, 10), (5, 0, 15, 10)])
+    assert m[0, 0] == pytest.approx(1.0) and m[0, 1] == pytest.approx(1 / 3) and m[1].max() == 0
+    # higher-score prediction takes the GT first
+    assert greedy_match(iou_matrix([(0, 0, 10, 10), (0, 0, 10, 10)], [(0, 0, 10, 10)]), np.array([0.2, 0.9]), 0.5) == {1: 0}
+
+
+def test_detection_metrics():
+    from sicdefect.det.evaluate import average_precision, operating_point
+
+    gt = {"a": [(0, (0, 0, 10, 10)), (1, (20, 20, 30, 30))], "b": [(0, (5, 5, 15, 15))], "clean": []}
+    perfect = {k: [(c, b, 0.9) for c, b in v] for k, v in gt.items()}
+    ap = average_precision(gt, perfect, 2)
+    assert ap["mAP50"] == pytest.approx(1.0) and ap["mAP50_95"] == pytest.approx(1.0)
+    preds = {"a": [(0, (0, 0, 10, 10), 0.9), (0, (20, 20, 30, 30), 0.8)],   # TP + wrong class
+             "b": [], "clean": [(1, (1, 1, 5, 5), 0.7), (1, (40, 40, 50, 50), 0.1)]}  # FP, below threshold
+    op = operating_point(gt, preds, ["x", "y"], 0.5, clean_ids={"clean"})
+    assert op["counts"] == {"gt_defects": 3, "correct": 1, "wrong_class": 1, "false_alarms": 1, "missed": 1,
+                            "images": 3}
+    assert op["clean_images"]["false_alarm_image_rate"] == 1.0
+    assert op["confusion"][1][0] == 1 and op["confusion"][2][1] == 1 and op["confusion"][0][2] == 1
+
+
+def test_preprocess_modes_and_mask_boxes():
+    from sicdefect.det.data import mask_to_boxes, read_labels, write_labels
+    from sicdefect.det.preprocess import make_input
+
+    img = np.full((40, 40), 200, np.uint8)
+    ref = img.copy()
+    img[10:15, 10:15] = 0
+    x = make_input(img, ref, "refdiff")
+    assert x.shape == (40, 40, 3) and x[12, 12, 2] == 200 and x[0, 0, 2] == 0
+    assert make_input(img, None, "gray").shape == (40, 40, 3)
+    with pytest.raises(ValueError):
+        make_input(img, None, "refdiff")
+    m = np.zeros((40, 40), np.uint8)
+    m[5:10, 5:12] = 1
+    m[30:35, 30:35] = 1
+    assert sorted(mask_to_boxes(m, min_area=4)) == [(5, 5, 12, 10), (30, 30, 35, 35)]
+
+
+def test_label_roundtrip(tmp_path):
+    from sicdefect.det.data import read_labels, write_labels
+
+    write_labels(tmp_path / "a.txt", [(2, (10, 20, 50, 60))], 100, 200)
+    (c, b), = read_labels(tmp_path / "a.txt", 100, 200)
+    assert c == 2 and np.allclose(b, (10, 20, 50, 60))
+
+
+def test_crop_with_context_clips():
+    from sicdefect.det.crops import cut
+
+    img = np.zeros((100, 100, 3), np.uint8)
+    assert cut(img, (90, 90, 100, 100)).shape == (64, 64, 3)
+
+
+def test_yolo_import_keeps_groups_together():
+    from sicdefect.det.data import _holdout_by_group
+
+    ids = [f"die{g}_{k}" for g in range(40) for k in range(4)]
+    split = _holdout_by_group(ids, [i.split("_")[0] for i in ids], 0.15, 0.15, seed=0)
+    for g in range(40):
+        assert len({split[f"die{g}_{k}"] for k in range(4)}) == 1
+    n = {s: sum(v == s for v in split.values()) for s in ("train", "val", "test")}
+    assert 20 <= n["test"] <= 28 and 20 <= n["val"] <= 28

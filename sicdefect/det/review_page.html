@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Defect Review</title>
+<style>
+:root{--bg:#f6f7f8;--fg:#1d2329;--mut:#5f6b76;--line:#d9dee3;--card:#fff;--accent:#2f6fa3;
+  --auto:#2e8b57;--review:#d98a00;--acc:#2f6fa3;--rej:#8a949e;--add:#9b3fb5;--warn:#c0392b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181c;--fg:#e6e9ec;--mut:#9aa5b1;--line:#2c333a;--card:#1b2026;--accent:#79b0dd;--acc:#79b0dd;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14181c;--fg:#e6e9ec;--mut:#9aa5b1;--line:#2c333a;--card:#1b2026;--accent:#79b0dd;--acc:#79b0dd;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0;height:100%}body{background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{font-size:16px;margin:0}header .mut{color:var(--mut);font-size:12px}
+.bar{height:6px;width:160px;background:var(--line);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+button,select,input{font:inherit;color:inherit}button{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+button.on{outline:2px solid var(--accent)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0;height:calc(100% - 58px)}
+#stage{position:relative;overflow:auto;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px}
+#cv{max-width:100%;background:#fff;border:1px solid var(--line);border-radius:4px;cursor:crosshair;touch-action:none}
+#side{border-left:1px solid var(--line);background:var(--card);overflow:auto;padding:12px}
+.thumbs{display:flex;gap:6px;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.thumbs div{flex:0 0 auto;font-size:11px;padding:3px 7px;border-radius:10px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+.thumbs div.cur{border-color:var(--accent);font-weight:600}.thumbs div.done{background:color-mix(in srgb,var(--auto) 18%,transparent)}
+.thumbs div.need{background:color-mix(in srgb,var(--review) 22%,transparent)}
+.box{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:6px;padding:7px 9px;margin:0 0 8px;cursor:pointer}
+.box.sel{box-shadow:0 0 0 2px var(--accent)}.box .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px}
+.box small{color:var(--mut)}.tag{font-size:11px;padding:1px 6px;border-radius:8px;color:#fff}
+.k{display:inline-block;border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px;color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:12px}.legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+@media (max-width:820px){main{grid-template-columns:1fr;height:auto}#side{border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Defect Review</h1>
+  <span class="mut" id="meta"></span>
+  <div class="bar" title="images reviewed"><i id="prog"></i></div><span class="mut" id="progt"></span>
+  <span style="flex:1"></span>
+  <label class="mut">Reviewer <input id="who" size="10" placeholder="name"></label>
+  <button id="exp" class="pri">Export decisions</button>
+</header>
+<main>
+  <section id="stage">
+    <div class="thumbs" id="thumbs"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <button id="prev">&larr; Prev <span class="k">P</span></button>
+      <button id="next">Next &rarr; <span class="k">N</span></button>
+      <span class="mut">Show:</span>
+      <button data-v="tested" class="vw on">Image</button><button data-v="reference" class="vw">Reference</button><button data-v="diff" class="vw">Difference</button>
+      <button id="hid">Low-confidence boxes</button>
+      <button id="draw">Add missed defect <span class="k">D</span></button>
+      <label class="mut"><input type="checkbox" id="onlyneed"> only images that need review</label>
+    </div>
+    <canvas id="cv"></canvas>
+    <div class="legend" id="legend"></div>
+  </section>
+  <aside id="side">
+    <div id="imghead"></div>
+    <div id="boxes"></div>
+    <p class="mut" style="font-size:12px">Keys: <span class="k">A</span> accept, <span class="k">R</span> reject,
+      <span class="k">1</span>-<span class="k">9</span> set class, <span class="k">&uarr;</span><span class="k">&darr;</span> select box,
+      <span class="k">Enter</span> accept all pre-accepted, <span class="k">D</span> draw a missed defect, <span class="k">N</span>/<span class="k">P</span> next/previous image.
+      Decisions are kept in this browser until you export them.</p>
+  </aside>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const C = D.classes, KEY = 'review:' + D.batch;
+const col = {auto:'--auto', review:'--review', accepted:'--acc', rejected:'--rej', added:'--add', hidden:'--rej'};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+let cur = 0, sel = 0, view = 'tested', showHidden = false, drawing = false, drag = null;
+const img = new Image(), cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+try { document.getElementById('who').value = localStorage.getItem('review:who') || ''; } catch (e) {}
+
+function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+function dec(i) { const id = D.images[i].id; return st[id] || (st[id] = {boxes: {}, added: [], done: false}); }
+function boxesOf(i) {
+  const im = D.images[i], d = dec(i);
+  return im.boxes.map((b, k) => ({...b, k, d: d.boxes[k] || {}}))
+    .filter(b => showHidden || b.status !== 'hidden' || b.d.decision);
+}
+function state(b) { return b.d.decision || (b.status === 'auto' ? 'auto' : b.status); }
+function finalCls(b) { return b.d.cls ?? b.cls; }
+function needs(i) { const im = D.images[i]; return im.boxes.some(b => b.status === 'review'); }
+function complete(i) {
+  const d = dec(i);
+  return D.images[i].boxes.every((b, k) => b.status !== 'review' || (d.boxes[k] && d.boxes[k].decision)) && d.done;
+}
+
+function legend() {
+  document.getElementById('legend').innerHTML = [['auto','pre-accepted (high confidence, models agree)'],
+    ['review','needs your decision'],['accepted','accepted by you'],['rejected','rejected'],['added','added by you']]
+    .map(([k, t]) => `<span><i style="background:${css(col[k])}"></i>${t}</span>`).join('');
+}
+function thumbs() {
+  const el = document.getElementById('thumbs'), only = document.getElementById('onlyneed').checked;
+  el.innerHTML = D.images.map((im, i) => (only && !needs(i) && i !== cur) ? '' :
+    `<div data-i="${i}" class="${i === cur ? 'cur' : ''} ${complete(i) ? 'done' : needs(i) ? 'need' : ''}">${im.id}${needs(i) ? ' •' : ''}</div>`).join('');
+  el.querySelectorAll('div').forEach(t => t.onclick = () => go(+t.dataset.i));
+  const n = D.images.filter((_, i) => complete(i)).length;
+  document.getElementById('prog').style.width = (100 * n / D.images.length) + '%';
+  document.getElementById('progt').textContent = `${n}/${D.images.length} reviewed`;
+}
+function draw() {
+  const im = D.images[cur];
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  const s = cv.width / im.width, lw = Math.max(2, cv.width / 400);
+  const bs = boxesOf(cur);
+  bs.forEach((b, j) => {
+    const stt = state(b), c = css(col[stt]);
+    const [x1, y1, x2, y2] = b.box.map(v => v * s);
+    ctx.lineWidth = j === sel ? lw * 2 : lw; ctx.strokeStyle = c;
+    ctx.setLineDash(stt === 'rejected' || stt === 'hidden' ? [6, 4] : []);
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); ctx.setLineDash([]);
+    const t = `${C[finalCls(b)]} ${b.score.toFixed(2)}`;
+    ctx.font = `${Math.max(12, cv.width / 60)}px system-ui`; const tw = ctx.measureText(t).width + 6, th = Math.max(16, cv.width / 48);
+    ctx.fillStyle = c; ctx.fillRect(x1, Math.max(0, y1 - th), tw, th);
+    ctx.fillStyle = '#fff'; ctx.fillText(t, x1 + 3, Math.max(th, y1) - 4);
+  });
+  dec(cur).added.forEach(a => {
+    const [x1, y1, x2, y2] = a.box.map(v => v * s);
+    ctx.lineWidth = lw; ctx.strokeStyle = css('--add'); ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    ctx.fillStyle = css('--add'); ctx.fillText('+ ' + C[a.cls], x1 + 3, Math.max(14, y1) - 4);
+  });
+  if (drag) { ctx.strokeStyle = css('--add'); ctx.setLineDash([4, 3]); ctx.strokeRect(drag.x, drag.y, drag.w, drag.h); ctx.setLineDash([]); }
+}
+function side() {
+  const im = D.images[cur], d = dec(cur), bs = boxesOf(cur);
+  const nrev = im.boxes.filter(b => b.status === 'review').length, nauto = im.boxes.filter(b => b.status === 'auto').length;
+  document.getElementById('imghead').innerHTML = `<h3 style="margin:0 0 4px">${im.id}</h3>
+    <p class="mut" style="margin:0 0 8px">${nauto} pre-accepted, ${nrev} to review, ${im.boxes.filter(b => b.status === 'hidden').length} low-confidence hidden.
+    ${im.reference ? '' : '<br>No reference image.'}</p>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><button id="accall">Accept all shown <span class="k">Enter</span></button>
+    <button id="okimg" class="${d.done ? 'on' : ''}">${d.done ? 'Image reviewed ✓' : 'Mark image reviewed'}</button></div>`;
+  const opts = cls => C.map((c, i) => `<option value="${i}" ${i === cls ? 'selected' : ''}>${i + 1}. ${c}</option>`).join('');
+  document.getElementById('boxes').innerHTML = bs.map((b, j) => {
+    const stt = state(b), cnn = b.cnn_cls != null ? `CNN: ${C[b.cnn_cls]} ${b.cnn_conf.toFixed(2)}, background ${b.p_background.toFixed(2)}` : '';
+    const dis = b.cnn_cls != null && b.cnn_cls !== b.yolo_cls ? ' <b style="color:var(--warn)">models disagree</b>' : '';
+    return `<div class="box ${j === sel ? 'sel' : ''}" data-j="${j}" style="border-left-color:${css(col[stt])}">
+      <span class="tag" style="background:${css(col[stt])}">${stt}</span> <b>${C[finalCls(b)]}</b> score ${b.score.toFixed(2)}${dis}<br>
+      <small>YOLO: ${C[b.yolo_cls]} ${b.yolo_conf.toFixed(2)}${cnn ? '<br>' + cnn : ''}</small>
+      <div class="row"><button data-a="accepted">Accept</button><button data-a="rejected">Reject</button>
+      <select data-c>${opts(finalCls(b))}</select></div></div>`;
+  }).join('') + d.added.map((a, j) => `<div class="box" style="border-left-color:${css('--add')}">
+      <span class="tag" style="background:${css('--add')}">added</span> <b>${C[a.cls]}</b> (missed by the model)
+      <div class="row"><select data-add="${j}">${opts(a.cls)}</select><button data-del="${j}">Remove</button></div></div>`).join('')
+    || '<p class="mut">No boxes. Use “Add missed defect” if you see one.</p>';
+  document.querySelectorAll('#boxes .box[data-j]').forEach(el => {
+    const j = +el.dataset.j;
+    el.onclick = e => { if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') { sel = j; render(); } };
+    el.querySelectorAll('button[data-a]').forEach(btn => btn.onclick = () => { sel = j; act(btn.dataset.a); });
+    el.querySelector('select').onchange = e => { sel = j; setCls(+e.target.value); };
+  });
+  document.querySelectorAll('[data-add]').forEach(s => s.onchange = e => { d.added[+s.dataset.add].cls = +e.target.value; save(); render(); });
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { d.added.splice(+b.dataset.del, 1); save(); render(); });
+  document.getElementById('accall').onclick = acceptAll;
+  document.getElementById('okimg').onclick = () => { d.done = !d.done; save(); render(); };
+}
+function render() { draw(); side(); thumbs(); }
+function act(a) {
+  const b = boxesOf(cur)[sel]; if (!b) return;
+  dec(cur).boxes[b.k] = {...(dec(cur).boxes[b.k] || {}), decision: a, t: new Date().toISOString()};
+  autoDone(); save(); if (sel < boxesOf(cur).length - 1) sel++; render();
+}
+function setCls(c) {
+  const b = boxesOf(cur)[sel]; if (!b || c >= C.length) return;
+  dec(cur).boxes[b.k] = {...(dec(cur).boxes[b.k] || {}), cls: c, decision: 'accepted', t: new Date().toISOString()};
+  autoDone(); save(); render();
+}
+function acceptAll() {
+  boxesOf(cur).forEach(b => { if (!b.d.decision && b.status !== 'hidden') dec(cur).boxes[b.k] = {decision: 'accepted', t: new Date().toISOString()}; });
+  autoDone(); save(); render();
+}
+function autoDone() {
+  const im = D.images[cur], d = dec(cur);
+  if (im.boxes.every((b, k) => b.status === 'hidden' || (d.boxes[k] && d.boxes[k].decision))) d.done = true;
+}
+function go(i) {
+  if (i < 0 || i >= D.images.length) return;
+  const only = document.getElementById('onlyneed').checked;
+  cur = i; sel = 0; load();
+  if (only && !needs(i)) thumbs();
+}
+function step(dir) {
+  const only = document.getElementById('onlyneed').checked;
+  let i = cur + dir;
+  while (only && i >= 0 && i < D.images.length && !needs(i)) i += dir;
+  go(i);
+}
+function load() {
+  const im = D.images[cur], src = view === 'tested' ? im.image : (im[view] || im.image);
+  img.onload = () => {
+    const maxW = Math.min(document.getElementById('stage').clientWidth - 24, 1000);
+    const s = Math.min(1, maxW / im.width) || 1;
+    cv.width = Math.round(im.width * Math.max(s, 0.3)); cv.height = Math.round(im.height * Math.max(s, 0.3));
+    render();
+  };
+  img.src = src;
+}
+function pos(e) { const r = cv.getBoundingClientRect(); return {x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height}; }
+cv.addEventListener('pointerdown', e => {
+  const p = pos(e), im = D.images[cur], s = cv.width / im.width;
+  if (drawing) { drag = {x0: p.x, y0: p.y, x: p.x, y: p.y, w: 0, h: 0}; cv.setPointerCapture(e.pointerId); return; }
+  const bs = boxesOf(cur); let hit = -1;
+  bs.forEach((b, j) => { const [x1, y1, x2, y2] = b.box.map(v => v * s); if (p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2) hit = j; });
+  if (hit >= 0) { sel = hit; render(); }
+});
+cv.addEventListener('pointermove', e => { if (!drag) return; const p = pos(e);
+  drag.x = Math.min(p.x, drag.x0); drag.y = Math.min(p.y, drag.y0); drag.w = Math.abs(p.x - drag.x0); drag.h = Math.abs(p.y - drag.y0); draw(); });
+cv.addEventListener('pointerup', () => {
+  if (!drag) return; const im = D.images[cur], s = cv.width / im.width;
+  if (drag.w > 4 && drag.h > 4) {
+    const box = [drag.x / s, drag.y / s, (drag.x + drag.w) / s, (drag.y + drag.h) / s].map(v => Math.round(v * 10) / 10);
+    const last = dec(cur).added.at(-1);
+    dec(cur).added.push({box, cls: last ? last.cls : 0, t: new Date().toISOString()}); save();
+  }
+  drag = null; drawing = false; document.getElementById('draw').classList.remove('on'); render();
+});
+document.getElementById('draw').onclick = () => { drawing = !drawing; document.getElementById('draw').classList.toggle('on', drawing); };
+document.getElementById('hid').onclick = e => { showHidden = !showHidden; e.target.classList.toggle('on', showHidden); sel = 0; render(); };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('onlyneed').onchange = thumbs;
+document.querySelectorAll('.vw').forEach(b => b.onclick = () => {
+  view = b.dataset.v; document.querySelectorAll('.vw').forEach(x => x.classList.toggle('on', x === b)); load(); });
+document.getElementById('who').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
+document.getElementById('who').onchange = e => { try { localStorage.setItem('review:who', e.target.value); } catch (x) {} };
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const n = boxesOf(cur).length, k = e.key.toLowerCase();
+  if (k === 'a') act('accepted'); else if (k === 'r') act('rejected');
+  else if (k === 'n' || e.key === 'ArrowRight') step(1); else if (k === 'p' || e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowDown') { sel = Math.min(n - 1, sel + 1); render(); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { sel = Math.max(0, sel - 1); render(); e.preventDefault(); }
+  else if (e.key === 'Enter') acceptAll();
+  else if (k === 'd') document.getElementById('draw').click();
+  else if (/^[1-9]$/.test(k)) setCls(+k - 1);
+});
+document.getElementById('exp').onclick = () => {
+  const out = {batch: D.batch, classes: C, reviewer: document.getElementById('who').value, exported: new Date().toISOString(),
+    source: D.source, images: D.images.map((im, i) => {
+      const d = dec(i);
+      return {id: im.id, file: im.file, width: im.width, height: im.height, reviewed: !!d.done,
+        boxes: im.boxes.map((b, k) => ({...b, decision: (d.boxes[k] || {}).decision ||
+          (b.status === 'auto' && d.done ? 'accepted' : b.status === 'hidden' ? 'not_shown' : 'undecided'),
+          final_cls: (d.boxes[k] || {}).cls ?? b.cls})),
+        added: d.added};
+    })};
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], {type: 'application/json'}));
+  a.download = `decisions_${D.batch}.json`; a.click();
+};
+document.getElementById('meta').textContent = `${D.batch} · ${D.images.length} images · ${D.models}`;
+legend(); load();
+</script>
+</body>
+</html>

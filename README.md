@@ -7,6 +7,13 @@ pipeline for SiC power-device inspection:
 |---|---|---|---|---|
 | 1 | WM-811K wafer maps | 9-class pattern classification | ResNet / EfficientNet, YOLOv8-cls | macro-F1, balanced accuracy |
 | 2 | MVTec AD | Unsupervised anomaly detection + localisation | PatchCore, PaDiM | image AUROC, pixel AUROC, PRO |
+| 3 | DeepPCB (+ your own labelled SEM/optical images) | Defect **detection + localisation + classification** with engineer review | YOLOv8 detector + CNN second stage | mAP, P/R/F1, false alarms, misses, inference time |
+| – | Your SEM images (folder per class) | Artifact classification (dirt, scratch, nanowire, ...) | ImageNet CNN fine-tuning | macro-F1 |
+
+**Track 3 is the end-to-end pipeline:**
+image → preprocessing → YOLO detection → defect localisation → CNN classification → engineer review → quantitative evaluation → automated report.
+Start with [docs/DETECTION.md](docs/DETECTION.md); results and limitations are in
+[docs/TECHNICAL_ANALYSIS.md](docs/TECHNICAL_ANALYSIS.md).
 
 All runs log to MLflow so you can compare them in one dashboard.
 
@@ -207,6 +214,23 @@ python predict_sem.py --model outputs/sem-resnet18/model.pt --input new_images/ 
   in both train and test, the test score is too optimistic. Check `split.csv`.
 - No data yet? `python tools/make_synthetic_sem.py` makes a fake set to test the pipeline.
 
+## 6c. Track 3: detection, localisation and engineer review
+
+```bash
+bash reproduce_det.sh          # everything below, in order (QUICK=1 for a 2-epoch smoke run)
+```
+
+| step | script | config | output |
+|---|---|---|---|
+| curate dataset | `prepare_detection.py` | – | `data/det/deeppcb/` + `DATASET_CARD.md`, stats |
+| train detector | `train_det.py` | `configs/det_deeppcb_{refdiff,gray}.yaml` | `outputs/det/<run>/weights/best.pt` |
+| train classifier | `train_crop_cnn.py` | `configs/cnn_deeppcb_refdiff.yaml` | `outputs/cnn/<run>/model.pt` |
+| benchmark + report | `evaluate_det.py` | – | `outputs/eval/<name>/report.html`, `metrics.json`, `cases.csv` |
+| new images → review | `run_pipeline.py` | – | `review/index.html`, `batch_report.html`, `results.json` |
+| review → labels | `ingest_review.py` | – | YOLO labels + `review_summary.json` |
+
+Details, metric definitions and how to use it on your own SEM images: [docs/DETECTION.md](docs/DETECTION.md).
+
 ## 7. Layout
 
 ```
@@ -216,12 +240,22 @@ sicdefect/            library code
   losses.py           focal loss
   rootcause.py        pattern -> likely process causes
   utils.py            device selection, seeding, MLflow setup
+  det/                Track 3: data (converters, splits, stats), preprocess, boxes, crops,
+                      pipeline (YOLO -> CNN fusion), evaluate (mAP, P/R/F1, FP/FN), report, viz,
+                      review_page.html (engineer review UI)
+  sem.py              SEM artifact classification (train_sem.py / predict_sem.py)
+  live.py             live training dashboard for notebooks
+configs/              YAML configs for every detection/classification run
+docs/                 DETECTION.md, TECHNICAL_ANALYSIS.md, MODEL_CARD.md, dataset-cards/
 prepare_wm811k.py     Step 1
 train_cnn.py          Step 2
 train_yolo.py         Step 3
 run_anomaly.py        Step 4
 predict.py            Step 5
-tools/make_synthetic_wm811k.py   fake data for smoke tests
+prepare_detection.py, train_det.py, train_crop_cnn.py, evaluate_det.py,
+run_pipeline.py, ingest_review.py, reproduce_det.sh       Track 3
+train_sem.py, predict_sem.py                               SEM artifact classifier
+tools/make_synthetic_wm811k.py, tools/make_synthetic_sem.py   fake data for smoke tests
 tests/                pytest unit tests
 ```
 

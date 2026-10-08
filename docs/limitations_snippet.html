@@ -1,0 +1,5 @@
+<p><b>Reliable:</b> defects that add or remove material where the reference has none (short, spurious copper, pin-hole; on SEM a particle, bridge or open), and the plain question "is there a defect here?" (see AP50 any-defect).</p>
+<p><b>Less reliable:</b> look-alike edge defects (open vs mousebite, spur vs copper), the smallest size tertile, and exact box extent (compare mAP50 with mAP50-95). Without a reference image, expect more of both false alarms and misses (see the gray ablation).</p>
+<p><b>Not detectable by design:</b> defect types that are not in training (they get a low score or the nearest known class, which is why nothing is auto-closed), and failures with no visible signature.</p>
+<p><b>Data caveats:</b> DeepPCB is binarised PCB imagery, some defects are synthetic, references are near-perfectly aligned, and the clean controls are templates. Absolute numbers will not transfer to SEM; the method will. Expect registration error to be the main false-alarm source on real die-to-die images.</p>
+<p>Full discussion and improvement plan: <code>docs/TECHNICAL_ANALYSIS.md</code>.</p>
