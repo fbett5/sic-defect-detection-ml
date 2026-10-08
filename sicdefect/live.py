@@ -61,6 +61,18 @@ def _guess_live_source(argv: list[str]) -> tuple[str, Path]:
     out = Path(_arg(argv, "--out", "outputs"))
     if not out.is_absolute():
         out = ROOT / out
+    if script in ("train_det.py", "train_crop_cnn.py"):
+        import yaml
+
+        cfg = yaml.safe_load(Path(ROOT / _arg(argv, "--config")).read_text()) if _arg(argv, "--config") else {}
+        sets = dict(kv.split("=", 1) for kv in argv[argv.index("--set") + 1:] if "=" in kv) if "--set" in argv else {}
+        run = sets.get("run_name", cfg.get("run_name", "run"))
+        if script == "train_det.py":
+            out = Path(_arg(argv, "--out", "outputs/det"))
+            return "yolo", (out if out.is_absolute() else ROOT / out) / run / "results.csv"
+        out = Path(_arg(argv, "--out", "outputs/cnn"))
+        run += "-hardneg" if _arg(argv, "--det-weights") else ""
+        return "cnn", (out if out.is_absolute() else ROOT / out) / run / "live.json"
     if script == "train_sem.py":
         run = _arg(argv, "--run-name") or f"sem-{_arg(argv, '--model', 'resnet18')}"
         return "cnn", out / run / "live.json"
@@ -94,13 +106,21 @@ def _read_yolo(path: Path) -> dict | None:
                 return [float(r[n]) for r in rows]
         return []
 
+    def total(prefix):  # detection logs box/cls/dfl losses separately
+        parts = [col(f"{prefix}/{k}_loss") for k in ("box", "cls", "dfl")]
+        return [sum(v) for v in zip(*parts)] if all(parts) else []
+
     return {
         "history": {
             "epoch": col("epoch"),
-            "train_loss": col("train/loss"),
-            "val_loss": col("val/loss"),
+            "train_loss": col("train/loss") or total("train"),
+            "val_loss": col("val/loss") or total("val"),
             "val_top1": col("metrics/accuracy_top1"),
             "val_top5": col("metrics/accuracy_top5"),
+            "val_mAP50": col("metrics/mAP50(B)"),
+            "val_mAP50-95": col("metrics/mAP50-95(B)"),
+            "val_precision": col("metrics/precision(B)"),
+            "val_recall": col("metrics/recall(B)"),
         },
         "epoch": int(col("epoch")[-1]),
     }
@@ -172,7 +192,9 @@ def _draw(kind: str, st: dict | None, log: deque, elapsed: float, title: str, do
 
     ax = fig.add_subplot(gs[0, 1])
     for key, label in (("val_macro_f1", "val macro-F1"), ("val_balanced_acc", "val balanced acc"),
-                       ("val_defect_recall", "val defect recall"), ("val_top1", "val top-1 acc")):
+                       ("val_defect_recall", "val defect recall"), ("val_top1", "val top-1 acc"),
+                       ("val_mAP50", "val mAP@0.5"), ("val_mAP50-95", "val mAP@0.5:0.95"),
+                       ("val_precision", "val precision"), ("val_recall", "val recall")):
         if h.get(key):
             ax.plot(h["epoch"], h[key], "o-", label=label)
     ax.set_ylim(0, 1.02)
